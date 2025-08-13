@@ -1,0 +1,38 @@
+[
+  {
+    "id": "8fc0657a-8680-4937-9a40-a1e5eabc7437",
+    "title": "完全版テスト文書",
+    "description": "ファイルベースストレージのテスト",
+    "fileName": "8fc0657a-8680-4937-9a40-a1e5eabc7437.txt",
+    "originalFileName": "test-complete.txt",
+    "filePath": "8fc0657a-8680-4937-9a40-a1e5eabc7437.txt",
+    "fileSize": 31,
+    "mimeType": "text/plain",
+    "extractedText": "新しいテストファイル\n",
+    "tags": [
+      "完全版",
+      "テスト",
+      "機能確認"
+    ],
+    "uploadedBy": "development-user",
+    "uploadedAt": "2025-08-13T14:23:48.002Z",
+    "version": 1,
+    "isActive": true
+  },
+  {
+    "id": "6d3e6094-6468-4013-857e-75e9d646d049",
+    "title": "21期UNIT-RUN_説明資料",
+    "description": "",
+    "fileName": "6d3e6094-6468-4013-857e-75e9d646d049.pdf",
+    "originalFileName": "21期UNIT-RUN_説明資料.pdf",
+    "filePath": "6d3e6094-6468-4013-857e-75e9d646d049.pdf",
+    "fileSize": 1065719,
+    "mimeType": "application/pdf",
+    "extractedText": "PDF content extraction requires pdf-parse library",
+    "tags": [],
+    "uploadedBy": "102943004485611536944",
+    "uploadedAt": "2025-08-13T14:25:22.140Z",
+    "version": 1,
+    "isActive": true
+  }
+]
