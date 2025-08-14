@@ -30,7 +30,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'こんにちは！アップロードされた資料について何でもお聞きください。PDF、Word、PowerPointファイルの内容について詳しく回答いたします。',
+      content: 'こんにちは！SLJ ChatbotのAIアシスタントです。🤖\n\nHugging Face AIを使用して、アップロードされた資料について詳しく回答いたします。PDF、Word、PowerPointファイルの内容について何でもお聞きください。\n\n✨ 機能:\n• ドキュメントベースの質問応答\n• 多言語対応\n• 高精度な情報抽出\n• 要約・分析',
       role: 'assistant',
       timestamp: new Date()
     }

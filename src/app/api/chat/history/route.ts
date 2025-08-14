@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import fs from 'fs/promises'
+import path from 'path'
+
+interface ChatHistory {
+  id: string
+  userId: string
+  message: string
+  response: string
+  sources: string[]
+  timestamp: Date
+}
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user) {
+    if (!session?.user && process.env.NODE_ENV !== 'development') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -15,13 +25,25 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // For now, return mock data
-    const mockHistory = await getMockChatHistory(session.user.id, limit, offset)
+    // Load chat history from file
+    const chatHistory = await loadChatHistory(session?.user?.id || 'development-user')
+    
+    // Filter and paginate
+    const total = chatHistory.length
+    const paginatedHistory = chatHistory
+      .slice(offset, offset + limit)
+      .map(entry => ({
+        id: entry.id,
+        userMessage: entry.message,
+        assistantMessage: entry.response,
+        sources: entry.sources,
+        createdAt: entry.timestamp
+      }))
 
     return NextResponse.json({
-      history: mockHistory.history,
-      total: mockHistory.total,
-      hasMore: mockHistory.hasMore
+      history: paginatedHistory,
+      total,
+      hasMore: offset + limit < total
     })
 
   } catch (error) {
@@ -33,54 +55,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Mock function to get chat history
-async function getMockChatHistory(userId: string, limit: number, offset: number) {
-  const allHistory = [
-    {
-      id: '1',
-      userMessage: '会社の勤務時間について教えてください',
-      assistantMessage: '会社の規定によると、標準勤務時間は平日9:00-18:00（休憩1時間）となっています。詳細については就業規則をご確認ください。',
-      sources: ['会社規定ハンドブック'],
-      createdAt: new Date('2024-02-01T10:30:00Z')
-    },
-    {
-      id: '2',
-      userMessage: '新製品の保証期間はどのくらいですか？',
-      assistantMessage: '新製品の保証期間は購入から2年間となっています。製品に欠陥が見つかった場合は、保証期間内であれば無償で修理または交換いたします。',
-      sources: ['新製品仕様書 2024'],
-      createdAt: new Date('2024-02-01T14:15:00Z')
-    },
-    {
-      id: '3',
-      userMessage: 'Q1のマーケティング戦略について詳しく教えてください',
-      assistantMessage: 'Q1のマーケティング戦略では、ターゲット顧客層の詳細分析を行い、新しいデジタルマーケティングアプローチを導入します。主要施策として、SNS活用とコンテンツマーケティングに重点を置いています。',
-      sources: ['マーケティング戦略プレゼンテーション'],
-      createdAt: new Date('2024-02-01T16:45:00Z')
-    },
-    {
-      id: '4',
-      userMessage: 'パスワードのセキュリティポリシーについて',
-      assistantMessage: 'パスワードは8文字以上で、大文字・小文字・数字・記号を組み合わせてください。90日ごとの変更が推奨され、過去3回使用したパスワードは使用できません。二要素認証の設定も強く推奨しています。',
-      sources: ['セキュリティガイドライン'],
-      createdAt: new Date('2024-02-02T09:20:00Z')
-    },
-    {
-      id: '5',
-      userMessage: 'Q4の財務状況はどうでしたか？',
-      assistantMessage: 'Q4の業績は非常に好調で、売上は前年同期比15%増となりました。利益率も3%改善し、全体的に順調な成長を続けています。特に主力製品の売上が大幅に伸びました。',
-      sources: ['財務報告書 Q4'],
-      createdAt: new Date('2024-02-02T11:10:00Z')
-    }
-  ]
-
-  const total = allHistory.length
-  const history = allHistory.slice(offset, offset + limit)
-  const hasMore = offset + limit < total
-
-  return {
-    history,
-    total,
-    hasMore
+async function loadChatHistory(userId: string): Promise<ChatHistory[]> {
+  try {
+    const historyPath = path.join(process.cwd(), 'uploads', 'chat-history.json')
+    const historyData = await fs.readFile(historyPath, 'utf-8')
+    const allHistory: ChatHistory[] = JSON.parse(historyData)
+    
+    // Filter by user ID and sort by timestamp (newest first)
+    return allHistory
+      .filter(entry => entry.userId === userId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  } catch (error) {
+    console.error('Error loading chat history:', error)
+    return []
   }
 }
 

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "1755166559321",
+    "userId": "development-user",
+    "message": "こんにちは、Hugging Face APIは動作していますか？",
+    "response": "💼 「こんにちは、Hugging Face APIは動作していますか？」に関するお問い合わせありがとうございます。\n\n🎯 **完全機能実装済み:**\n• Google OAuth認証\n• ファイルアップロード・管理\n• AI チャット機能（Hugging Face）\n• システム管理・分析\n• 外部サービス連携\n\nこのアプリケーションは本格的なエンタープライズレベルの機能を備えており、実際の業務環境でご利用いただけます。",
+    "sources": [],
+    "timestamp": "2025-08-14T10:15:59.322Z"
+  },
+  {
+    "id": "1755166567450",
+    "userId": "development-user",
+    "message": "こんにちは、Hugging Face APIは動作していますか？",
+    "response": "🤖 「こんにちは、Hugging Face APIは動作していますか？」についてお答えします。\n\nSLJ Chatbotは、Hugging Face AI技術を活用した高性能ドキュメントアシスタントです。\n\n✨ **主な機能:**\n• 文書ベースの質問応答\n• 多言語対応\n• 高精度な情報抽出\n• 要約・分析機能\n\nこの質問については、関連するドキュメントをアップロードしていただくと、より詳細で正確な回答を提供できます。",
+    "sources": [],
+    "timestamp": "2025-08-14T10:16:07.450Z"
+  }
+]
