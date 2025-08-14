@@ -30,7 +30,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'こんにちは！SLJ ChatbotのAIアシスタントです。🤖\n\nHugging Face AIを使用して、アップロードされた資料について詳しく回答いたします。PDF、Word、PowerPointファイルの内容について何でもお聞きください。\n\n✨ 機能:\n• ドキュメントベースの質問応答\n• 多言語対応\n• 高精度な情報抽出\n• 要約・分析',
+      content: '🚀 **SLJ Chatbot AI - ChatGPT風機能が実装されました！**\n\n✨ **新機能**:\n• 🤖 **ChatGPT風会話**: Hugging Face AIによる自然な対話\n• 💬 **ストリーミング応答**: リアルタイムでの回答表示\n• 🧠 **会話記憶**: 過去のやり取りを考慮した応答\n• 📄 **文書解析**: PDF内容に基づく高精度回答\n• 🎯 **インテリジェント分析**: 評価制度、グレード、昇格などの企業情報に対応\n\n💡 **使い方**:\n1. PDFファイルをアップロード\n2. 資料について質問\n3. AIが文書を分析して詳細回答\n\n何でもお聞きください！',
       role: 'assistant',
       timestamp: new Date()
     }
@@ -59,9 +59,129 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
     }
 
     setMessages(prev => [...prev, userMessage])
+    const currentMessage = inputMessage
     setInputMessage('')
     setIsLoading(true)
 
+    // Create initial assistant message for streaming
+    const assistantMessageId = (Date.now() + 1).toString()
+    const initialAssistantMessage: Message = {
+      id: assistantMessageId,
+      content: '',
+      role: 'assistant',
+      timestamp: new Date()
+    }
+    setMessages(prev => [...prev, initialAssistantMessage])
+
+    try {
+      // Try streaming first, fallback to regular chat if needed
+      const shouldUseStreaming = process.env.NODE_ENV === 'development' || true // Enable for better UX
+      
+      if (shouldUseStreaming) {
+        await handleStreamingResponse(currentMessage, assistantMessageId)
+      } else {
+        await handleRegularResponse(currentMessage, assistantMessageId)
+      }
+    } catch (error) {
+      console.error('Chat error:', error)
+      // Update the assistant message with error
+      setMessages(prev => prev.map(msg => 
+        msg.id === assistantMessageId 
+          ? { ...msg, content: '申し訳ございません。エラーが発生しました。もう一度お試しください。' }
+          : msg
+      ))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleStreamingResponse = async (message: string, messageId: string) => {
+    try {
+      const response = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message,
+          documentIds: documents.map(doc => doc.id),
+          conversationHistory: messages.slice(-10) // Last 10 messages for context
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Streaming API error')
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('Response body is not readable')
+      }
+
+      let buffer = ''
+      let sources: string[] = []
+
+      while (true) {
+        const { value, done } = await reader.read()
+        
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            
+            if (data === '[DONE]') {
+              // Streaming completed
+              return
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+              
+              if (parsed.error) {
+                throw new Error(parsed.error)
+              }
+
+              if (parsed.content) {
+                // Update message content
+                setMessages(prev => prev.map(msg => 
+                  msg.id === messageId 
+                    ? { 
+                        ...msg, 
+                        content: parsed.content,
+                        sources: parsed.sources?.map((source: string) => ({
+                          documentId: '1',
+                          title: source,
+                          excerpt: ''
+                        }))
+                      }
+                    : msg
+                ))
+              }
+
+              if (parsed.sources && parsed.sources.length > 0) {
+                sources = parsed.sources
+              }
+            } catch (parseError) {
+              console.error('Failed to parse streaming data:', parseError)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error)
+      // Fallback to regular response
+      await handleRegularResponse(message, messageId)
+    }
+  }
+
+  const handleRegularResponse = async (message: string, messageId: string) => {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -69,40 +189,36 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: inputMessage,
-          documentIds: documents.map(doc => doc.id)
+          message,
+          documentIds: documents.map(doc => doc.id),
+          conversationHistory: messages.slice(-10)
         })
       })
 
       if (response.ok) {
         const result = await response.json()
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: result.message,
-          role: 'assistant',
-          timestamp: new Date(result.timestamp),
-          sources: result.sources?.map((source: string) => ({
-            documentId: '1',
-            title: source,
-            excerpt: ''
-          }))
-        }
-        setMessages(prev => [...prev, assistantMessage])
+        
+        // Update the assistant message
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? {
+                ...msg,
+                content: result.message,
+                timestamp: new Date(result.timestamp),
+                sources: result.sources?.map((source: string) => ({
+                  documentId: '1',
+                  title: source,
+                  excerpt: ''
+                }))
+              }
+            : msg
+        ))
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Chat API error')
       }
     } catch (error) {
-      console.error('Chat error:', error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: '申し訳ございません。エラーが発生しました。もう一度お試しください。',
-        role: 'assistant',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
+      throw error // Re-throw to be handled by the main function
     }
   }
 
@@ -153,17 +269,21 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
   return (
     <Card className="h-[600px] flex flex-col">
-      <CardHeader>
+      <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            AIチャット
+            <Bot className="h-6 w-6" />
+            SLJ AI Assistant - ChatGPT風
+            <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+              Powered by Hugging Face
+            </span>
           </CardTitle>
           {messages.length > 2 && (
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowSlackNotification(true)}
+              className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
             >
               <MessageSquare className="h-4 w-4 mr-2" />
               Slack要約送信
@@ -180,32 +300,38 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg p-3 ${
+                className={`max-w-[85%] rounded-2xl p-4 shadow-sm ${
                   message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-900'
+                    ? 'bg-blue-600 text-white ml-auto'
+                    : 'bg-white border border-gray-200 text-gray-900'
                 }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-3">
                   {message.role === 'assistant' && (
-                    <Bot className="h-4 w-4 mt-1 flex-shrink-0" />
+                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-white" />
+                    </div>
                   )}
                   {message.role === 'user' && (
-                    <User className="h-4 w-4 mt-1 flex-shrink-0" />
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 order-last">
+                      <User className="h-4 w-4 text-white" />
+                    </div>
                   )}
                   <div className="flex-1">
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <div className={`prose prose-sm max-w-none ${message.role === 'user' ? 'prose-invert' : ''}`}>
+                      <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                    </div>
                     
                     {/* ソース情報 */}
                     {message.sources && message.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <p className="text-xs font-medium mb-2">参照資料:</p>
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="text-xs font-medium mb-2 text-gray-600">📄 参照資料:</p>
                         <div className="space-y-1">
                           {message.sources.map((source, index) => (
-                            <div key={index} className="flex items-center gap-1 text-xs">
-                              <FileText className="h-3 w-3" />
-                              <span>{source.title}</span>
-                              {source.page && <span>(p.{source.page})</span>}
+                            <div key={index} className="flex items-center gap-2 text-xs bg-gray-50 px-2 py-1 rounded">
+                              <FileText className="h-3 w-3 text-blue-600" />
+                              <span className="font-medium">{source.title}</span>
+                              {source.page && <span className="text-gray-500">(p.{source.page})</span>}
                             </div>
                           ))}
                         </div>
@@ -213,8 +339,8 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
                     )}
                   </div>
                 </div>
-                <div className="text-xs opacity-70 mt-2">
-                  {message.timestamp.toLocaleTimeString()}
+                <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
+                  {message.timestamp.toLocaleTimeString('ja-JP')}
                 </div>
               </div>
             </div>
@@ -223,11 +349,19 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
           {/* ローディング表示 */}
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-gray-100 rounded-lg p-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-4 w-4" />
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm text-gray-600">回答を生成中...</span>
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm max-w-[85%]">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center">
+                    <Bot className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                    </div>
+                    <span className="text-sm text-gray-600">AIが考えています...</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -237,23 +371,31 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
         </div>
 
         {/* 入力エリア */}
-        <div className="flex gap-2">
-          <Textarea
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="資料について質問してください..."
-            className="flex-1 min-h-[50px] max-h-[100px]"
-            disabled={isLoading}
-          />
-          <Button
-            onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isLoading}
-            size="lg"
-            className="px-4"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="border-t pt-4">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Textarea
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="何でもお聞きください... (Shift+Enterで改行)"
+                className="resize-none border-0 bg-gray-50 focus:bg-white transition-colors min-h-[50px] max-h-[120px] rounded-xl"
+                disabled={isLoading}
+              />
+            </div>
+            <Button
+              onClick={handleSendMessage}
+              disabled={!inputMessage.trim() || isLoading}
+              size="lg"
+              className="h-[50px] w-[50px] rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg"
+            >
+              {isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* ドキュメント情報 */}

@@ -6,8 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { MessageSquare, FileText, Shield, Zap } from 'lucide-react'
 
 export default function LoginPage() {
+  // Google OAuth設定状態をチェック
+  const isGoogleOAuthConfigured = typeof window !== 'undefined' && 
+    process.env.NODE_ENV === 'development'
+  
   const handleGoogleSignIn = () => {
     signIn('google', { callbackUrl: '/dashboard' })
+  }
+
+  const handleDevModeAccess = () => {
+    // 開発モード用のダイレクトアクセス
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -94,6 +103,36 @@ export default function LoginPage() {
                 </svg>
                 Googleでログイン
               </Button>
+              
+              {/* 開発環境用のアクセス */}
+              {process.env.NODE_ENV === 'development' && (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-white px-2 text-gray-500">または</span>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    onClick={handleDevModeAccess}
+                    className="w-full h-12 text-base"
+                    variant="secondary"
+                  >
+                    開発モードでアクセス
+                  </Button>
+                  
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                    <p className="text-xs text-yellow-800">
+                      <strong>開発者向け:</strong> Google OAuth認証情報を設定するには、
+                      <code className="mx-1 px-1 bg-yellow-100 rounded">GOOGLE_OAUTH_FIX.md</code>
+                      ファイルの手順をご確認ください。
+                    </p>
+                  </div>
+                </>
+              )}
               
               <div className="text-xs text-gray-500 text-center space-y-2">
                 <p>ログインすることで、利用規約とプライバシーポリシーに同意したものとみなします。</p>

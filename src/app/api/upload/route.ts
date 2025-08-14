@@ -135,8 +135,15 @@ async function extractTextFromFile(filePath: string, mimeType: string): Promise<
       return buffer.toString('utf8')
 
     case 'application/pdf':
-      // PDF parsing requires additional setup
-      return 'PDF content extraction requires pdf-parse library'
+      try {
+        // Try to use pdf-parse library if available
+        const pdfParse = require('pdf-parse')
+        const data = await pdfParse(buffer)
+        return data.text || 'PDF text extraction completed but no text content found'
+      } catch (error) {
+        console.error('PDF extraction error:', error)
+        return 'PDF content extraction requires pdf-parse library'
+      }
 
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
       // Word document parsing requires additional setup
