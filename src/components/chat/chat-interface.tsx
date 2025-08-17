@@ -4,8 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Send, Bot, User, FileText, Loader2, MessageSquare } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Send, Bot, User, FileText, Loader2, MessageSquare, Settings } from 'lucide-react'
 
 interface Message {
   id: string
@@ -39,6 +39,10 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [showSlackNotification, setShowSlackNotification] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [selectedModel, setSelectedModel] = useState<'huggingface' | 'openai' | 'gpt-oss'>('huggingface')
+  const [selectedModelName, setSelectedModelName] = useState<string>('')
+  const [reasoningLevel, setReasoningLevel] = useState<'low' | 'medium' | 'high'>('medium')
+  const [showModelSettings, setShowModelSettings] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -75,7 +79,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
     try {
       // Try streaming first, fallback to regular chat if needed
-      const shouldUseStreaming = process.env.NODE_ENV === 'development' || true // Enable for better UX
+      const shouldUseStreaming = true // Re-enable streaming with improved handling
       
       if (shouldUseStreaming) {
         await handleStreamingResponse(currentMessage, assistantMessageId)
@@ -97,6 +101,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
   const handleStreamingResponse = async (message: string, messageId: string) => {
     try {
+      console.log('Starting streaming request for message:', message)
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: {
@@ -105,12 +110,16 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
         body: JSON.stringify({
           message,
           documentIds: documents.map(doc => doc.id),
-          conversationHistory: messages.slice(-10) // Last 10 messages for context
+          conversationHistory: messages.slice(-10), // Last 10 messages for context
+          modelType: selectedModel,
+          modelName: selectedModelName || undefined,
+          reasoningLevel: reasoningLevel
         })
       })
 
+      console.log('Streaming response status:', response.status)
       if (!response.ok) {
-        throw new Error('Streaming API error')
+        throw new Error(`Streaming API error: ${response.status} - ${response.statusText}`)
       }
 
       const reader = response.body?.getReader()
@@ -133,16 +142,19 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            
-            if (data === '[DONE]') {
-              // Streaming completed
-              return
-            }
+          if (line.trim() === '' || !line.startsWith('data: ')) continue
+          
+          const data = line.slice(6).trim()
+          
+          if (data === '[DONE]') {
+            console.log('Streaming completed')
+            return
+          }
 
+          if (data) {
             try {
               const parsed = JSON.parse(data)
+              console.log('Parsed streaming data:', parsed)
               
               if (parsed.error) {
                 throw new Error(parsed.error)
@@ -155,9 +167,9 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
                     ? { 
                         ...msg, 
                         content: parsed.content,
-                        sources: parsed.sources?.map((source: string) => ({
-                          documentId: '1',
-                          title: source,
+                        sources: parsed.sources?.map((source: any) => ({
+                          documentId: source.id || '1',
+                          title: source.title || source,
                           excerpt: ''
                         }))
                       }
@@ -169,13 +181,13 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
                 sources = parsed.sources
               }
             } catch (parseError) {
-              console.error('Failed to parse streaming data:', parseError)
+              console.error('Failed to parse streaming data:', parseError, 'Raw data:', data)
             }
           }
         }
       }
     } catch (error) {
-      console.error('Streaming error:', error)
+      console.error('Streaming error details:', error)
       // Fallback to regular response
       await handleRegularResponse(message, messageId)
     }
@@ -191,7 +203,10 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
         body: JSON.stringify({
           message,
           documentIds: documents.map(doc => doc.id),
-          conversationHistory: messages.slice(-10)
+          conversationHistory: messages.slice(-10),
+          modelType: selectedModel,
+          modelName: selectedModelName || undefined,
+          reasoningLevel: reasoningLevel
         })
       })
 
@@ -275,20 +290,112 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
             <Bot className="h-6 w-6" />
             SLJ AI Assistant - ChatGPT風
             <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
-              Powered by Hugging Face
+              {selectedModel === 'gpt-oss' ? 'GPT-OSS' : selectedModel === 'openai' ? 'OpenAI' : 'Hugging Face'}
             </span>
           </CardTitle>
-          {messages.length > 2 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSlackNotification(true)}
-              className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Slack要約送信
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <Dialog open={showModelSettings} onOpenChange={setShowModelSettings}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  モデル設定
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>AI モデル設定</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">AIモデル</label>
+                    <select 
+                      value={selectedModel} 
+                      onChange={(e) => setSelectedModel(e.target.value as any)}
+                      className="w-full mt-1 p-2 border rounded-md"
+                    >
+                      <option value="huggingface">Hugging Face (基本)</option>
+                      <option value="openai">OpenAI GPT (高精度)</option>
+                      <option value="gpt-oss">GPT-OSS (推論特化)</option>
+                    </select>
+                  </div>
+                  
+                  {selectedModel === 'openai' && (
+                    <div>
+                      <label className="text-sm font-medium">OpenAIモデル</label>
+                      <select 
+                        value={selectedModelName} 
+                        onChange={(e) => setSelectedModelName(e.target.value)}
+                        className="w-full mt-1 p-2 border rounded-md"
+                      >
+                        <option value="">デフォルト (GPT-4)</option>
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      </select>
+                    </div>
+                  )}
+                  
+                  {selectedModel === 'gpt-oss' && (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium">gpt-ossモデル</label>
+                        <select 
+                          value={selectedModelName} 
+                          onChange={(e) => setSelectedModelName(e.target.value)}
+                          className="w-full mt-1 p-2 border rounded-md"
+                        >
+                          <option value="">デフォルト (120B)</option>
+                          <option value="gpt-oss-120b">gpt-oss-120b (高性能)</option>
+                          <option value="gpt-oss-20b">gpt-oss-20b (軽量)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium">推論レベル</label>
+                        <select 
+                          value={reasoningLevel} 
+                          onChange={(e) => setReasoningLevel(e.target.value as any)}
+                          className="w-full mt-1 p-2 border rounded-md"
+                        >
+                          <option value="low">低 (高速)</option>
+                          <option value="medium">中 (バランス)</option>
+                          <option value="high">高 (詳細分析)</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+                  
+                  <div className="bg-blue-50 p-3 rounded-lg text-sm">
+                    <p><strong>モデル特徴:</strong></p>
+                    {selectedModel === 'huggingface' && (
+                      <p>• 無料で利用可能<br/>• 基本的な対話機能<br/>• 日本語対応</p>
+                    )}
+                    {selectedModel === 'openai' && (
+                      <p>• 高精度な応答<br/>• 複雑な推論に対応<br/>• APIキー必要</p>
+                    )}
+                    {selectedModel === 'gpt-oss' && (
+                      <p>• オープンソースGPT<br/>• 推論過程を表示<br/>• Apache 2.0ライセンス</p>
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            
+            {messages.length > 2 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSlackNotification(true)}
+                className="bg-white/10 border-white/20 hover:bg-white/20 text-white"
+              >
+                <MessageSquare className="h-4 w-4 mr-2" />
+                Slack要約送信
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col">

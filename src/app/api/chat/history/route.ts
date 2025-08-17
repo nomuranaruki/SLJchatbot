@@ -9,9 +9,14 @@ interface ChatHistory {
   userId: string
   message: string
   response: string
-  sources: string[]
-  timestamp: Date
+  timestamp: string
+  sources?: Array<{
+    id: string
+    title: string
+  }>
 }
+
+const HISTORY_FILE = path.join(process.cwd(), 'uploads', 'chat-history.json')
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,80 +27,95 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
-
-    // Load chat history from file
-    const chatHistory = await loadChatHistory(session?.user?.id || 'development-user')
+    const limit = parseInt(searchParams.get('limit') || '20')
     
-    // Filter and paginate
-    const total = chatHistory.length
-    const paginatedHistory = chatHistory
-      .slice(offset, offset + limit)
-      .map(entry => ({
-        id: entry.id,
-        userMessage: entry.message,
-        assistantMessage: entry.response,
-        sources: entry.sources,
-        createdAt: entry.timestamp
-      }))
+    // Ensure chat history file exists
+    try {
+      await fs.access(HISTORY_FILE)
+    } catch {
+      await fs.writeFile(HISTORY_FILE, JSON.stringify([]))
+    }
+
+    const historyContent = await fs.readFile(HISTORY_FILE, 'utf-8')
+    const history: ChatHistory[] = JSON.parse(historyContent)
+    
+    // Filter by user in production, show all in development
+    const userHistory = process.env.NODE_ENV === 'development' 
+      ? history 
+      : history.filter(h => h.userId === session?.user?.email)
+    
+    // Sort by timestamp (newest first) and limit
+    const recentHistory = userHistory
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
 
     return NextResponse.json({
-      history: paginatedHistory,
-      total,
-      hasMore: offset + limit < total
+      history: recentHistory,
+      total: userHistory.length
     })
 
   } catch (error) {
-    console.error('Chat history API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Chat history GET error:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
   }
 }
 
-async function loadChatHistory(userId: string): Promise<ChatHistory[]> {
+export async function POST(request: NextRequest) {
   try {
-    const historyPath = path.join(process.cwd(), 'uploads', 'chat-history.json')
-    const historyData = await fs.readFile(historyPath, 'utf-8')
-    const allHistory: ChatHistory[] = JSON.parse(historyData)
+    const session = await getServerSession(authOptions)
     
-    // Filter by user ID and sort by timestamp (newest first)
-    return allHistory
-      .filter(entry => entry.userId === userId)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    if (!session?.user && process.env.NODE_ENV !== 'development') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { message, response, sources = [] } = body
+
+    if (!message || !response) {
+      return NextResponse.json({ 
+        error: 'Message and response are required' 
+      }, { status: 400 })
+    }
+
+    // Ensure chat history file exists
+    try {
+      await fs.access(HISTORY_FILE)
+    } catch {
+      await fs.writeFile(HISTORY_FILE, JSON.stringify([]))
+    }
+
+    const historyContent = await fs.readFile(HISTORY_FILE, 'utf-8')
+    const history: ChatHistory[] = JSON.parse(historyContent)
+
+    const newEntry: ChatHistory = {
+      id: Date.now().toString(),
+      userId: session?.user?.email || 'development-user',
+      message,
+      response,
+      timestamp: new Date().toISOString(),
+      sources
+    }
+
+    history.push(newEntry)
+
+    // Keep only the last 1000 entries
+    if (history.length > 1000) {
+      history.splice(0, history.length - 1000)
+    }
+
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2))
+
+    return NextResponse.json({ 
+      success: true,
+      entry: newEntry
+    })
+
   } catch (error) {
-    console.error('Error loading chat history:', error)
-    return []
+    console.error('Chat history POST error:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
   }
-}
-
-// In production, use this Prisma query:
-async function getChatHistoryFromDatabase(userId: string, limit: number, offset: number) {
-  // const [history, total] = await Promise.all([
-  //   prisma.chatHistory.findMany({
-  //     where: { userId },
-  //     orderBy: { createdAt: 'desc' },
-  //     take: limit,
-  //     skip: offset,
-  //     select: {
-  //       id: true,
-  //       userMessage: true,
-  //       assistantMessage: true,
-  //       sources: true,
-  //       createdAt: true
-  //     }
-  //   }),
-  //   prisma.chatHistory.count({ where: { userId } })
-  // ])
-
-  // return {
-  //   history: history.map(item => ({
-  //     ...item,
-  //     sources: item.sources ? item.sources.split(',') : []
-  //   })),
-  //   total,
-  //   hasMore: offset + limit < total
-  // }
 }

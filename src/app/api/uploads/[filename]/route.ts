@@ -36,7 +36,7 @@ export async function GET(
         break
     }
 
-    return new NextResponse(file, {
+    return new NextResponse(new Uint8Array(file), {
       headers: {
         'Content-Type': contentType,
         'Content-Disposition': `inline; filename="${filename}"`,

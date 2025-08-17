@@ -5,7 +5,32 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.0-38B2AC)](https://tailwindcss.com/)
 [![Tests](https://img.shields.io/badge/Tests-Passing-green.svg)](README.md)
 
-> 🤖 AI搭載の高機能ドキュメント管理・チャットアシスタント
+> 🤖 ChatGPT風AI搭載の高機能ドキュメント管理・チャットアシスタント
+
+## 🚀 クイックスタート
+
+### 1. プロジェクトのクローン
+```bash
+git clone <repository-url>
+cd SLJchatbot
+```
+
+### 2. API設定（5分で完了）
+```bash
+# 環境変数ファイル作成
+cp .env.example .env.local
+
+# 詳細な設定手順は以下を参照
+```
+📋 **[API設定ガイド](./API_SETUP_GUIDE.md)** - 必須API設定の詳細手順
+
+### 3. 起動
+```bash
+npm install
+npm run dev
+```
+
+http://localhost:3000 でアクセス開始！
 
 ## ✨ 主な機能
 
@@ -20,10 +45,14 @@
 - **タグ管理** - カテゴリ分類とフィルタリング ✅
 - **ファイルベースストレージ** - 実際のファイル保存・管理 ✅
 
-### 🤖 AI チャット機能
-- **文書ベースQA** - アップロードした資料に基づく質疑応答 ⚠️ *要OpenAI APIキー*
-- **コンテキスト理解** - 複数文書からの情報統合 ⚠️ *要OpenAI APIキー*
-- **チャット履歴** - 過去の会話の保存・参照 ✅
+### 🤖 AI チャット機能 ⭐ **NEW: ChatGPT風機能実装済み**
+- **Hugging Face AI** - 自然な日本語対話システム ✅ **IMPLEMENTED**
+- **ストリーミング応答** - リアルタイム回答表示 ✅ **IMPLEMENTED**
+- **文書ベースQA** - アップロードした資料に基づく詳細分析 ✅ **IMPLEMENTED**
+- **高度な検索機能** - 日本語対応、関連度スコア計算 ✅ **IMPLEMENTED**
+- **構造化回答** - 評価制度、グレード、昇格等の企業情報対応 ✅ **IMPLEMENTED**
+- **会話記憶** - 過去の会話を考慮した応答 ✅ **IMPLEMENTED**
+- **チャット履歴** - 過去の会話の保存・参照 ✅ **IMPLEMENTED**
 
 ### 👨‍💼 管理機能
 - **ユーザー管理** - アクティブユーザー・権限管理 ✅

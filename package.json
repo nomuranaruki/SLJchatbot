@@ -27,6 +27,7 @@
     "clsx": "^2.0.0",
     "date-fns": "^4.1.0",
     "googleapis": "^155.0.1",
+    "gpt-oss": "^1.0.0",
     "lucide-react": "^0.294.0",
     "mammoth": "^1.10.0",
     "multer": "^2.0.2",

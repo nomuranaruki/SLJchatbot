@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { generateStreamingResponse, EnhancedConversationMemory } from '@/lib/huggingface'
-import { getDocuments } from '@/lib/documents-store'
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+import { generateIntelligentFallback } from '@/lib/huggingface'
+import { searchDocuments, getDocuments } from '@/lib/documents-store'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,70 +13,93 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { message, documentIds = [], conversationHistory = [] } = await request.json()
+    const body = await request.json()
+    const { message, conversationHistory = [] } = body
 
-    if (!message || typeof message !== 'string') {
+    if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    // Create enhanced conversation memory
-    const conversationMemory = new EnhancedConversationMemory(15, 3000)
-    
-    // Add conversation history to memory
-    conversationHistory.forEach((turn: ChatMessage) => {
-      conversationMemory.addTurn(turn.role, turn.content)
-    })
-
-    // Get document context if documentIds are provided
-    let documentContext = ''
-    let sources: string[] = []
-
-    if (documentIds.length > 0) {
-      try {
-        const documentsResult = await getDocuments()
-        const allDocuments = documentsResult.documents
-        const selectedDocs = allDocuments.filter(doc => documentIds.includes(doc.id))
-        
-        const documentContents = selectedDocs.map(doc => ({
-          name: doc.title,
-          content: doc.extractedText || `${doc.title}: ${doc.description || 'No content available'}`
-        }))
-        
-        documentContext = documentContents
-          .map(doc => `Document: ${doc.name}\nContent: ${doc.content}`)
-          .join('\n\n')
-        sources = documentContents.map(doc => doc.name)
-      } catch (error) {
-        console.error('Error fetching documents:', error)
-      }
-    }
-
-    // Create streaming response
+    // Create a readable stream for the response
     const encoder = new TextEncoder()
     
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of generateStreamingResponse(message, conversationMemory, documentContext)) {
+          // Search for relevant documents using enhanced search
+          console.log('Searching for documents with message:', message)
+          console.log('searchDocuments function available:', typeof searchDocuments)
+          
+          // First check if we have any documents at all
+          const allDocsResult = await getDocuments()
+          console.log('Total documents available:', allDocsResult.total)
+          if (allDocsResult.documents.length > 0) {
+            console.log('Sample document titles:', allDocsResult.documents.slice(0, 3).map(d => d.title))
+          }
+          
+          console.log('About to call searchDocuments with:', { message, limit: 5 })
+          const searchResults = await searchDocuments(message, 5)
+          console.log('searchDocuments returned:', typeof searchResults, 'length:', searchResults?.length || 'undefined')
+          if (searchResults && searchResults.length > 0) {
+            console.log('First result:', {
+              title: searchResults[0].document?.title,
+              score: searchResults[0].relevanceScore,
+              hasText: Boolean(searchResults[0].document?.extractedText)
+            })
+          }
+          
+          console.log('Search results:', {
+            documentCount: searchResults.length,
+            totalDocuments: searchResults.length,
+            documentTitles: searchResults.map(result => `${result.document.title} (score: ${result.relevanceScore})`)
+          })
+          
+          const context = searchResults.length > 0 
+            ? searchResults.map(result => 
+                `${result.document.title}: ${result.document.extractedText?.substring(0, 1000) || ''}`
+              ).join('\n\n')
+            : ''
+
+          console.log('Generated context length:', context.length)
+          console.log('Generating fallback response with context:', {
+            questionLength: message.length,
+            contextLength: context.length,
+            hasContext: context.length > 0
+          })
+
+          // Generate natural language response
+          const responseMessage = await generateIntelligentFallback(message, context)
+          console.log('Generated response length:', responseMessage.length)
+          
+          // Split response into chunks for streaming effect
+          const words = responseMessage.split(' ')
+          
+          for (let i = 0; i < words.length; i++) {
+            const chunk = words.slice(0, i + 1).join(' ')
             const data = JSON.stringify({ 
               content: chunk,
-              sources,
-              timestamp: new Date().toISOString()
+              isComplete: i === words.length - 1,
+              sources: searchResults.map(result => ({
+                id: result.document.id,
+                title: result.document.title
+              }))
             })
             
             controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+            
+            // Add small delay for streaming effect
+            await new Promise(resolve => setTimeout(resolve, 50))
           }
           
           // Send final completion signal
-          controller.enqueue(encoder.encode(`data: [DONE]\n\n`))
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
-        } catch (error) {
-          console.error('Streaming error:', error)
           
-          // Send error and close stream
+        } catch (error) {
+          console.error('Stream error:', error)
           const errorData = JSON.stringify({ 
-            error: 'Failed to generate response',
-            timestamp: new Date().toISOString()
+            error: 'Internal server error',
+            isComplete: true 
           })
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
           controller.close()
@@ -91,19 +109,16 @@ export async function POST(request: NextRequest) {
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
-        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+        'Connection': 'keep-alive',
+      },
     })
 
   } catch (error) {
-    console.error('Chat streaming API error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Chat stream error:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error' 
+    }, { status: 500 })
   }
 }

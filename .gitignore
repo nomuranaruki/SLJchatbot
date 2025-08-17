@@ -49,3 +49,13 @@ next-env.d.ts
 # IDE
 .vscode/settings.json
 .idea/
+
+# Development and debug files
+debug-search.js
+reprocess-pdfs.js
+test-search-ts.mjs
+/src/app/api/chat-main/
+/src/app/api/chat-working/
+/src/app/api/chatbot/
+/src/app/api/chattest/
+/src/app/api/test/
