@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import LoginPage from '@/components/auth/login-page'
 
+// Force dynamic rendering for this page due to session check
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
   // 開発環境でGoogle OAuth認証情報が未設定の場合のバイパス
   const isGoogleOAuthConfigured = process.env.GOOGLE_CLIENT_ID && 

@@ -30,7 +30,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: '🚀 **SLJ Chatbot AI - ChatGPT風機能が実装されました！**\n\n✨ **新機能**:\n• 🤖 **ChatGPT風会話**: Hugging Face AIによる自然な対話\n• 💬 **ストリーミング応答**: リアルタイムでの回答表示\n• 🧠 **会話記憶**: 過去のやり取りを考慮した応答\n• 📄 **文書解析**: PDF内容に基づく高精度回答\n• 🎯 **インテリジェント分析**: 評価制度、グレード、昇格などの企業情報に対応\n\n💡 **使い方**:\n1. PDFファイルをアップロード\n2. 資料について質問\n3. AIが文書を分析して詳細回答\n\n何でもお聞きください！',
+      content: 'こんにちは！SLJ Chatbotです。📄\n\n会社の資料について何かご質問はありませんか？評価制度、メダルシート、福利厚生など、アップロードされた資料に基づいてお答えできます。\n\nお気軽にお聞かせください！',
       role: 'assistant',
       timestamp: new Date()
     }

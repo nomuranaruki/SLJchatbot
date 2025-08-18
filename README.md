@@ -139,10 +139,18 @@ npm install
 
 3. 環境変数を設定:
 ```bash
+# .env.exampleをコピーして.env.localを作成
 cp .env.example .env.local
 ```
 
-詳細な設定については `CREDENTIALS_SETUP.md` を参照してください。
+⚠️ **重要**: `.env.local`ファイルを開いて、以下のAPIキーを実際の値に置き換えてください：
+
+- `GOOGLE_CLIENT_ID` - Google OAuth認証用
+- `GOOGLE_CLIENT_SECRET` - Google OAuth認証用
+- `HUGGINGFACE_API_KEY` - AI機能用（ChatGPT風機能）
+- `OPENAI_API_KEY` - 追加AI機能用（オプション）
+
+📋 **詳細な設定手順**: [API_SETUP_GUIDE.md](./API_SETUP_GUIDE.md) と [CREDENTIALS_SETUP.md](./CREDENTIALS_SETUP.md) を参照してください。
 
 4. データベースをセットアップ:
 ```bash

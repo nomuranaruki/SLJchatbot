@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { generateIntelligentFallback } from '@/lib/huggingface'
+import { generateNaturalChatResponse } from '@/lib/huggingface'
 import { searchDocuments, getDocuments } from '@/lib/documents-store'
 
 export async function POST(request: NextRequest) {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           })
 
           // Generate natural language response
-          const responseMessage = await generateIntelligentFallback(message, context)
+          const responseMessage = await generateNaturalChatResponse(message, context)
           console.log('Generated response length:', responseMessage.length)
           
           // Split response into chunks for streaming effect

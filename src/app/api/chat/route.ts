@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getDocuments } from '@/lib/documents-store'
-import { generateIntelligentFallback, enhanceResponseQuality } from '@/lib/huggingface'
+import { searchDocuments } from '@/lib/documents-store'
+import { generateNaturalChatResponse } from '@/lib/huggingface'
 
 export async function GET() {
   return NextResponse.json({ 
@@ -27,27 +27,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
 
-    // Search for relevant documents
-    const searchResults = await getDocuments(message, undefined, 5)
+    // Search for relevant documents using enhanced search
+    const searchResults = await searchDocuments(message, 5)
     
-    const sources = searchResults.documents.map(doc => ({
-      id: doc.id,
-      title: doc.title,
-      relevantContent: doc.extractedText?.substring(0, 500) || ''
+    const sources = searchResults.map(result => ({
+      id: result.document.id,
+      title: result.document.title,
+      relevantContent: result.matchedText || result.document.extractedText?.substring(0, 500) || '',
+      relevanceScore: result.relevanceScore
     }))
 
     let responseMessage = ''
 
     if (sources.length > 0) {
-      // Use natural language response with document context
+      // Use natural chat with document context
       const context = sources.map(s => `${s.title}: ${s.relevantContent}`).join('\n\n')
       
-      // First generate a basic response and then enhance it
-      const basicResponse = await generateIntelligentFallback(message, context)
-      responseMessage = enhanceResponseQuality(basicResponse, message, context)
+      responseMessage = await generateNaturalChatResponse(message, context)
     } else {
-      // Use intelligent fallback for natural conversation
-      responseMessage = await generateIntelligentFallback(message)
+      // Use natural chat for general conversation
+      responseMessage = await generateNaturalChatResponse(message)
     }
 
     return NextResponse.json({

@@ -3,16 +3,18 @@ import { HfInference } from '@huggingface/inference'
 // Hugging Face API client initialization
 export const hf = new HfInference(process.env.HUGGINGFACE_API_KEY)
 
-// Available models for different tasks - updated for better Japanese support
+// Available models for different tasks - updated with gpt-oss models
 export const MODELS = {
-  // Primary conversation model - better for Japanese
-  CHAT: 'microsoft/DialoGPT-medium',
+  // Primary conversation model - OpenAI gpt-oss for high-quality reasoning
+  CHAT: 'openai/gpt-oss-120b',
+  // Alternative high-performance model  
+  CHAT_ALTERNATIVE: 'openai/gpt-oss-20b',
   // Backup lightweight model
-  SIMPLE_CHAT: 'microsoft/DialoGPT-small', 
+  SIMPLE_CHAT: 'microsoft/DialoGPT-medium', 
   // Question answering model
   QA: 'deepset/roberta-base-squad2',
-  // Text generation
-  TEXT_GENERATION: 'gpt2',
+  // Text generation with gpt-oss
+  TEXT_GENERATION: 'openai/gpt-oss-120b',
   // Summarization
   SUMMARIZATION: 'facebook/bart-large-cnn',
   // Fast QA for quick responses
@@ -609,24 +611,6 @@ function analyzeDocumentContent(content: string, question: string): string {
 }
 
 /**
- * Extract keywords from question
- */
-function extractKeywords(question: string): string[] {
-  // Remove common Japanese particles and extract meaningful words
-  const stopWords = ['は', 'が', 'を', 'に', 'で', 'と', 'の', 'から', 'まで', 'について', 'という', 'です', 'ます', 'である', 'どのような', 'どんな', 'なに', 'なぜ', 'いつ', 'どこ', 'だれ', 'どうやって']
-  
-  // Split by various separators and clean up
-  const words = question
-    .replace(/[？！。、,，]/g, ' ')
-    .split(/[\s\u3000]+/)
-    .filter(word => word.length > 1 && !stopWords.includes(word))
-    .map(word => word.replace(/[？！。、]/g, ''))
-    .filter(word => word.length > 0)
-  
-  return Array.from(new Set(words)).slice(0, 5) // Remove duplicates and limit to 5 keywords
-}
-
-/**
  * Check if Hugging Face API is available
  */
 export async function checkHuggingFaceConnection(): Promise<boolean> {
@@ -1114,4 +1098,299 @@ export async function* generateStreamingResponse(
     const fallbackResponse = await generateIntelligentFallback(message, documentContext || '', conversationMemory)
     yield fallbackResponse
   }
+}
+
+/**
+ * Generate response using gpt-oss models with reasoning levels
+ */
+export async function generateGptOssResponse(
+  prompt: string,
+  context?: string,
+  reasoningLevel: 'low' | 'medium' | 'high' = 'medium',
+  model: string = MODELS.CHAT
+): Promise<string> {
+  try {
+    // Prepare system prompt with reasoning level
+    const systemPrompt = `Reasoning: ${reasoningLevel}\n\nYou are a helpful AI assistant. Please provide accurate and helpful responses in Japanese when appropriate.`
+    
+    // Prepare the input using harmony format for gpt-oss
+    const messages = [
+      { role: 'system', content: systemPrompt }
+    ]
+    
+    if (context) {
+      messages.push({ 
+        role: 'user', 
+        content: `Context: ${context}\n\nQuestion: ${prompt}` 
+      })
+    } else {
+      messages.push({ role: 'user', content: prompt })
+    }
+
+    // For gpt-oss models, use the text generation with proper formatting
+    const formattedInput = messages.map(msg => 
+      `${msg.role === 'system' ? 'System' : msg.role === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`
+    ).join('\n') + '\nAssistant:'
+
+    const response = await hf.textGeneration({
+      model,
+      inputs: formattedInput,
+      parameters: {
+        max_new_tokens: 800,
+        temperature: 0.7,
+        do_sample: true,
+        repetition_penalty: 1.1,
+        return_full_text: false,
+        stop: ['Human:', 'System:']
+      }
+    })
+
+    return response.generated_text.trim()
+  } catch (error) {
+    console.error('gpt-oss API error:', error)
+    
+    // Fallback to standard generation
+    return generateResponse(prompt, context, MODELS.SIMPLE_CHAT)
+  }
+}
+
+/**
+ * Generate natural, conversational responses like ChatGPT
+ */
+export async function generateNaturalChatResponse(
+  message: string,
+  documentContext?: string,
+  conversationHistory?: string[]
+): Promise<string> {
+  try {
+    // First try Hugging Face API with proper error handling
+    const response = await tryHuggingFaceGeneration(message, documentContext, conversationHistory)
+    return makeResponseNatural(response, message, documentContext)
+  } catch (error) {
+    console.error('Hugging Face API failed:', error)
+    
+    // Use intelligent fallback without API
+    if (documentContext) {
+      return generateSimpleDocumentResponse(message, documentContext)
+    } else {
+      return generateSimpleResponse(message)
+    }
+  }
+}
+
+/**
+ * Try Hugging Face generation with fallback handling
+ */
+async function tryHuggingFaceGeneration(
+  message: string,
+  documentContext?: string,
+  conversationHistory?: string[]
+): Promise<string> {
+  // Create a natural conversation prompt
+  let systemPrompt = `あなたは親切で知識豊富なAIアシスタントです。自然で人間らしい会話を心がけ、簡潔で分かりやすい回答をしてください。`
+  
+  // Build conversation context
+  let conversationContext = ''
+  if (conversationHistory && conversationHistory.length > 0) {
+    conversationContext = conversationHistory.slice(-4).join('\n') // Last 4 exchanges
+  }
+  
+  // Create the input prompt
+  let inputPrompt = systemPrompt
+  
+  if (documentContext) {
+    inputPrompt += `\n\n参考資料:\n${documentContext.slice(0, 1000)}`
+  }
+  
+  if (conversationContext) {
+    inputPrompt += `\n\n最近の会話:\n${conversationContext}`
+  }
+  
+  inputPrompt += `\n\nユーザー: ${message}\nアシスタント:`
+
+  // Try multiple models as fallback
+  const modelsToTry = [
+    MODELS.SIMPLE_CHAT, // DialoGPT-medium
+    'gpt2', // Basic GPT-2
+    'microsoft/DialoGPT-small' // Smaller model
+  ]
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await hf.textGeneration({
+        model,
+        inputs: inputPrompt,
+        parameters: {
+          max_new_tokens: 200,
+          temperature: 0.7,
+          do_sample: true,
+          repetition_penalty: 1.1,
+          return_full_text: false,
+          stop: ['ユーザー:', 'アシスタント:', '\n\nユーザー', '\n\nアシスタント']
+        }
+      })
+
+      if (response.generated_text && response.generated_text.trim().length > 0) {
+        return response.generated_text.trim()
+      }
+    } catch (modelError) {
+      console.warn(`Model ${model} failed:`, modelError)
+      continue
+    }
+  }
+
+  // If all models fail, throw error to trigger fallback
+  throw new Error('All Hugging Face models failed')
+}
+
+/**
+ * Make response more natural and conversational
+ */
+function makeResponseNatural(response: string, userMessage: string, documentContext?: string): string {
+  // Remove excessive formatting and make more conversational
+  let natural = response
+    .replace(/^【.*?】\s*/gm, '') // Remove formatted headers
+    .replace(/^\*\*.*?\*\*\s*/gm, '') // Remove bold headers
+    .replace(/^#+\s*/gm, '') // Remove markdown headers
+    .replace(/📄|📂|📋|🎯|📊|💬|📈|🔍|💡|🤝|✅|❌|🎉|🔧|📱|🏢|💰|🎁|📝|🔒|🚀|🎨|📋|📈|📊/g, '') // Remove all emojis
+    .replace(/^\s*[•\-\*]\s*/gm, '') // Remove bullet points
+    .replace(/^(:\s*|：\s*)/gm, '') // Remove colons at start of lines
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold formatting
+    .replace(/\n{3,}/g, '\n\n') // Reduce excessive line breaks
+    .replace(/^(詳細分析結果|参照資料|構造化分析|文書統計|利用可能な機能|さらなるサポート).*$/gm, '') // Remove structured sections
+    .replace(/^(ご質問|📂|📋|🎯|📊|💬|📈|🔍|💡|🤝|📱|🏢|💰|🎁|📝|🔒|🚀|🎨).*$/gm, '') // Remove structured headers
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // Clean up multiple line breaks
+    .trim()
+
+  // Remove structured analysis sections completely
+  const sectionsToRemove = [
+    /^.*?詳細分析結果.*$/gm,
+    /^.*?参照資料.*$/gm,
+    /^.*?構造化分析.*$/gm,
+    /^.*?文書統計.*$/gm,
+    /^.*?利用可能な機能.*$/gm,
+    /^.*?さらなるサポート.*$/gm,
+    /^.*?総行数.*$/gm,
+    /^.*?箇条書き項目.*$/gm,
+    /^.*?セクション数.*$/gm
+  ]
+
+  sectionsToRemove.forEach(pattern => {
+    natural = natural.replace(pattern, '')
+  })
+
+  // Clean up the content to be more conversational
+  natural = natural
+    .replace(/について説明.*?システムです。/g, 'についてですね。')
+    .replace(/資料では.*?確認されています。/g, '')
+    .replace(/この回答は.*?生成されています。/g, '')
+    .replace(/具体的な数値.*?提供しています。/g, '')
+
+  // Ensure reasonable length (not too verbose)
+  if (natural.length > 400) {
+    const sentences = natural.split(/[。！？]/)
+    natural = sentences.slice(0, 3).join('。') + '。'
+  }
+
+  // Ensure the response starts naturally and is concise
+  if (natural.length < 20 || !natural.trim()) {
+    if (documentContext && userMessage.includes('評価')) {
+      return '評価制度についてですね。資料を確認したところ、包括的な制度が設定されています。どの部分について詳しく知りたいですか？'
+    } else if (documentContext) {
+      return `「${userMessage}」について資料を確認しました。具体的にどの部分について詳しく知りたいですか？`
+    }
+  }
+
+  return natural
+}
+
+/**
+ * Generate simple document-based response
+ */
+function generateSimpleDocumentResponse(message: string, documentContext: string): string {
+  const context = documentContext.slice(0, 1200)
+  const messageLC = message.toLowerCase()
+  
+  // Create more natural, conversational responses
+  if (messageLC.includes('評価') || messageLC.includes('人事')) {
+    // Extract key information naturally from the context
+    const hasGrades = context.includes('グレード') || context.includes('STEP')
+    const hasMedalSheet = context.includes('メダルシート') || context.includes('medal')
+    const hasReview = context.includes('評価面談') || context.includes('面談')
+    
+    let response = '評価制度についてお答えしますね。\n\n'
+    
+    if (hasGrades) {
+      response += '会社ではグレード制度を採用していて、'
+    }
+    if (hasMedalSheet) {
+      response += 'メダルシートを使った目標管理システムがあります。'
+    }
+    if (hasReview) {
+      response += '定期的な評価面談で進捗を確認し、'
+    }
+    
+    response += '\n\n具体的にどの部分について詳しく知りたいですか？'
+    return response
+  }
+  
+  if (messageLC.includes('メダルシート')) {
+    return 'メダルシートについてですね。\n\n資料によると、メダルシートは目標設定と達成度評価のためのツールです。単価目標やメダル取得数、資格取得などを管理して、定期的に振り返りを行います。\n\n使い方や具体的な項目について、もう少し詳しくお聞きしたいことはありますか？'
+  }
+  
+  if (messageLC.includes('グレード') || messageLC.includes('昇格')) {
+    return 'グレード制度について説明しますね。\n\n資料を見ると、段階的なグレード構成になっていて、それぞれに昇格条件が設定されています。グレードに応じた手当や評価基準も決められています。\n\n特定のグレードや昇格条件について詳しく知りたいですか？'
+  }
+  
+  if (messageLC.includes('福利厚生') || messageLC.includes('制度')) {
+    return '福利厚生制度についてお答えします。\n\n資料には様々な制度が記載されています。どのような制度について具体的に知りたいですか？\n\n例えば、健康保険、退職金、研修制度、休暇制度などがあります。'
+  }
+  
+  // More natural generic response
+  return `「${message}」についてですね。\n\n資料を確認したところ、関連する情報が含まれています。もう少し具体的にどの部分について知りたいか教えていただけますか？\n\nそうすれば、より詳しい情報をお伝えできます。`
+}
+
+/**
+ * Extract keywords from document context
+ */
+function extractKeywords(text: string): string[] {
+  const commonWords = ['について', 'です', 'ます', 'こと', 'もの', 'ため', 'など', 'また', 'では', 'から', 'まで', 'として', 'による', 'において', 'に関して']
+  
+  const words = text
+    .replace(/[^\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\u3400-\u4DBF\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 1 && !commonWords.includes(word))
+    .slice(0, 10)
+  
+  return [...new Set(words)]
+}
+
+/**
+ * Generate simple response without document context
+ */
+function generateSimpleResponse(message: string): string {
+  const messageLC = message.toLowerCase()
+  
+  if (messageLC.includes('こんにちは') || messageLC.includes('はじめまして') || messageLC.includes('hello')) {
+    return 'こんにちは！SLJ Chatbotです。会社の資料について何かご質問がございましたら、お気軽にお聞かせください。'
+  }
+  
+  if (messageLC.includes('ありがとう') || messageLC.includes('thank')) {
+    return 'どういたしまして。他にもご質問がございましたら、いつでもお聞かせください。'
+  }
+  
+  if (messageLC.includes('助けて') || messageLC.includes('help') || messageLC.includes('サポート')) {
+    return 'お手伝いいたします！どのようなことについて知りたいですか？\n\n例：評価制度、メダルシート、福利厚生、会社のルールなど'
+  }
+  
+  if (messageLC.includes('メダルシート')) {
+    return 'メダルシートについてお答えするために、関連する資料をアップロードしていただけますでしょうか？アップロード後、詳細な説明をいたします。'
+  }
+  
+  if (messageLC.includes('評価') || messageLC.includes('人事') || messageLC.includes('制度')) {
+    return '評価制度について承りました。より詳細な回答のために、人事関連の資料をアップロードしていただくと、具体的な情報をお伝えできます。'
+  }
+  
+  // Generic helpful response
+  return `「${message}」について承りました。\n\nより詳細でお役に立つ回答をするために、関連する資料をアップロードしていただくか、具体的な質問をお聞かせください。\n\n何かお手伝いできることがございましたら、お気軽にお聞かせください。`
 }
