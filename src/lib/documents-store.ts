@@ -35,8 +35,16 @@ export async function saveDocument(documentData: DocumentMetadata): Promise<Docu
   const documentsJson = await readFile(DOCUMENTS_DB_PATH, 'utf-8')
   const documents: DocumentMetadata[] = JSON.parse(documentsJson)
   
-  // Add new document
-  documents.push(documentData)
+  // Check if document already exists (update scenario)
+  const existingIndex = documents.findIndex(doc => doc.id === documentData.id)
+  
+  if (existingIndex >= 0) {
+    // Update existing document
+    documents[existingIndex] = documentData
+  } else {
+    // Add new document
+    documents.push(documentData)
+  }
   
   await writeFile(DOCUMENTS_DB_PATH, JSON.stringify(documents, null, 2))
   
@@ -100,7 +108,7 @@ export async function getDocumentById(id: string): Promise<DocumentMetadata | nu
   return documents.find(doc => doc.id === id && doc.isActive) || null
 }
 
-// Delete document (soft delete)
+// Delete document (hard delete)
 export async function deleteDocument(id: string): Promise<boolean> {
   await ensureDocumentsDB()
   
@@ -110,7 +118,8 @@ export async function deleteDocument(id: string): Promise<boolean> {
   const docIndex = documents.findIndex(doc => doc.id === id)
   if (docIndex === -1) return false
   
-  documents[docIndex].isActive = false
+  // Remove document from array (hard delete)
+  documents.splice(docIndex, 1)
   
   await writeFile(DOCUMENTS_DB_PATH, JSON.stringify(documents, null, 2))
   
@@ -217,7 +226,7 @@ export async function searchDocuments(
     if (doc.extractedText && doc.extractedText.length > 0) {
       const contentScore = calculateMatchScore(doc.extractedText, searchTerms)
       if (contentScore > 0) {
-        totalScore += contentScore * 2
+        totalScore += contentScore * 10 // ★重みを強化
         if (bestMatchType === 'content') {
           // Find the best matching snippet
           const snippet = findBestSnippet(doc.extractedText, searchTerms)

@@ -79,7 +79,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
     try {
       // Try streaming first, fallback to regular chat if needed
-      const shouldUseStreaming = true // Re-enable streaming with improved handling
+      const shouldUseStreaming = false // Temporarily disable streaming for debugging
       
       if (shouldUseStreaming) {
         await handleStreamingResponse(currentMessage, assistantMessageId)
@@ -119,6 +119,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
       console.log('Streaming response status:', response.status)
       if (!response.ok) {
+        console.error('Streaming API error:', response.status, response.statusText)
         throw new Error(`Streaming API error: ${response.status} - ${response.statusText}`)
       }
 
@@ -126,16 +127,21 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
       const decoder = new TextDecoder()
 
       if (!reader) {
+        console.error('Response body is not readable')
         throw new Error('Response body is not readable')
       }
 
       let buffer = ''
-      let sources: string[] = []
+      let hasReceivedContent = false
 
+      console.log('Starting to read stream...')
       while (true) {
         const { value, done } = await reader.read()
         
-        if (done) break
+        if (done) {
+          console.log('Stream reading completed')
+          break
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -145,9 +151,10 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
           if (line.trim() === '' || !line.startsWith('data: ')) continue
           
           const data = line.slice(6).trim()
+          console.log('Received data:', data)
           
           if (data === '[DONE]') {
-            console.log('Streaming completed')
+            console.log('Streaming completed with [DONE]')
             return
           }
 
@@ -157,10 +164,13 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
               console.log('Parsed streaming data:', parsed)
               
               if (parsed.error) {
+                console.error('Parsed error:', parsed.error)
                 throw new Error(parsed.error)
               }
 
               if (parsed.content) {
+                hasReceivedContent = true
+                console.log('Updating message content:', parsed.content.substring(0, 100) + '...')
                 // Update message content
                 setMessages(prev => prev.map(msg => 
                   msg.id === messageId 
@@ -176,15 +186,16 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
                     : msg
                 ))
               }
-
-              if (parsed.sources && parsed.sources.length > 0) {
-                sources = parsed.sources
-              }
             } catch (parseError) {
               console.error('Failed to parse streaming data:', parseError, 'Raw data:', data)
             }
           }
         }
+      }
+
+      if (!hasReceivedContent) {
+        console.warn('No content received from stream, falling back to regular response')
+        await handleRegularResponse(message, messageId)
       }
     } catch (error) {
       console.error('Streaming error details:', error)
@@ -195,6 +206,7 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
 
   const handleRegularResponse = async (message: string, messageId: string) => {
     try {
+      console.log('Starting regular chat request for message:', message)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -210,8 +222,10 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
         })
       })
 
+      console.log('Regular chat response status:', response.status)
       if (response.ok) {
         const result = await response.json()
+        console.log('Regular chat result:', result)
         
         // Update the assistant message
         setMessages(prev => prev.map(msg => 
@@ -220,19 +234,21 @@ export default function ChatInterface({ documents = [] }: ChatInterfaceProps) {
                 ...msg,
                 content: result.message,
                 timestamp: new Date(result.timestamp),
-                sources: result.sources?.map((source: string) => ({
-                  documentId: '1',
-                  title: source,
-                  excerpt: ''
+                sources: result.sources?.map((source: any) => ({
+                  documentId: source.id || '1',
+                  title: source.title || source,
+                  excerpt: source.relevantContent || ''
                 }))
               }
             : msg
         ))
       } else {
         const errorData = await response.json()
+        console.error('Regular chat API error:', errorData)
         throw new Error(errorData.error || 'Chat API error')
       }
     } catch (error) {
+      console.error('Regular chat error:', error)
       throw error // Re-throw to be handled by the main function
     }
   }

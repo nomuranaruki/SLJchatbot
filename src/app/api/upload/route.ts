@@ -136,10 +136,15 @@ async function extractTextFromFile(filePath: string, mimeType: string): Promise<
 
     case 'application/pdf':
       try {
-        // Try to use pdf-parse library if available
+        // Use a simple, working approach for PDF parsing
+        const fs = require('fs')
         const pdfParse = require('pdf-parse')
-        const data = await pdfParse(buffer)
-        return data.text || 'PDF text extraction completed but no text content found'
+        
+        // Read the file buffer
+        const fileBuffer = fs.readFileSync(filePath)
+        const data = await pdfParse(fileBuffer)
+        
+        return data.text || 'PDF文書は処理されましたが、テキストコンテンツが見つかりませんでした'
       } catch (error) {
         console.error('PDF extraction error:', error)
         return 'PDF content extraction requires pdf-parse library'

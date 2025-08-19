@@ -150,63 +150,32 @@ function generateSimpleDocumentResponse(message: string, documentContext: string
   
   // Create detailed, citation-rich responses
   if (messageLC.includes('評価') || messageLC.includes('人事')) {
-    let response = 'スピードリンクジャパンの評価制度について詳しくお答えします。\n\n'
+    let response = '評価制度についてお答えしますね。\n\n'
     
-    // Extract and cite specific information from evaluation document
-    if (context.includes('ミッション遂行') || context.includes('評価の観点')) {
-      response += '**評価制度の概要**\n'
-      response += '資料によると、弊社の評価制度は「ミッション遂行を軸とした仕組み」となっています。\n\n'
-      
-      response += '**評価の4つの観点**\n'
-      response += '文書には以下の評価観点が明記されています：\n'
-      response += '1. ミッション達成度\n'
-      response += '2. 行動指針の体現\n'
-      response += '3. チームへの貢献\n'
-      response += '4. 継続的な学習・成長\n\n'
+    // Extract specific information from context and cite it
+    if (context.includes('グレード') || context.includes('STEP')) {
+      const gradeInfo = extractRelevantSection(context, ['グレード', 'STEP', '昇格'])
+      response += '**グレード制度について：**\n'
+      if (gradeInfo) {
+        response += `資料によると：「${gradeInfo.substring(0, 200)}...」\n\n`
+      }
+      response += '段階的なキャリアアップが可能な制度になっています。\n\n'
     }
     
-    if (context.includes('SLG') || context.includes('グレード')) {
-      response += '**SLG（スピードリンク・グレード）制度**\n'
-      response += '資料によると、SLGは以下の内容で構成されています：\n'
-      response += '• ミッションの概要\n'
-      response += '• グレードの概要\n'
-      response += '• 報酬について（給与の内訳・グレード手当・昇給の流れ）\n'
-      response += '• 各グレードの詳細\n'
-      response += '• SLGの運用について\n\n'
+    if (context.includes('メダルシート') || context.includes('medal')) {
+      const medalInfo = extractRelevantSection(context, ['メダルシート', 'medal', '目標'])
+      response += '**メダルシート制度について：**\n'
+      if (medalInfo) {
+        response += `文書には：「${medalInfo.substring(0, 200)}...」と記載されています。\n\n`
+      }
+      response += 'このシステムで個人の目標設定と達成度管理を行っています。\n\n'
     }
     
-    if (context.includes('評価サイクル') || context.includes('評価タイミング')) {
-      response += '**評価サイクルについて**\n'
-      response += '文書には評価タイミングと評価フローについて詳細が記載されており、昇進・降格に関する制度設計も含まれています。\n\n'
+    if (context.includes('評価面談') || context.includes('面談')) {
+      response += '**評価面談について：**\n定期的な面談で上司との対話を通じて成長をサポートしています。\n\n'
     }
     
-    response += '**詳細情報**\n'
-    response += '各メンバーは自身のグレードに応じたミッションを遂行し、その結果に基づいて評価・昇進が決定される仕組みになっています。\n\n'
-    response += '他にも具体的に知りたい制度や手続きがありましたら、遠慮なくお聞きください。グレード詳細、評価サイクル、昇進基準など、どの部分について詳しく説明いたしましょうか？'
-    return response
-  }
-  
-  if (messageLC.includes('ユニット') || messageLC.includes('UNIT-RUN')) {
-    let response = '21期UNIT-RUN制度について詳しく説明いたします。\n\n'
-    
-    response += '**ユニット制度の目的**\n'
-    response += '資料によると、スピードリンクジャパンでは以下の目的でユニット制度を導入しています：\n'
-    response += '• チームワークの向上\n'
-    response += '• 個人のスキル向上\n'
-    response += '• 会社全体の成長促進\n'
-    response += '• 効率的な業務運営\n\n'
-    
-    response += '**各ユニットの構成**\n'
-    response += '文書には以下の構成が記載されています：\n'
-    response += '• リーダー1名\n'
-    response += '• メンバー3-5名\n'
-    response += '• サポートスタッフ\n\n'
-    
-    response += '**運営方針**\n'
-    response += '資料によると、「月次での成果確認と改善を継続的に実施し、四半期ごとの大きな振り返りを通じてより良いチーム作りを目指す」とあります。\n\n'
-    
-    response += 'ユニット制度は、メンバー同士がより効果的に協力し、目標達成を支援するシステムです。\n\n'
-    response += '具体的な運営方法や参加方法について他にご質問がありましたら、お気軽にお聞きください。'
+    response += '他にも具体的に知りたい制度や手続きがありましたら、遠慮なくお聞きください。どの部分について詳しく説明いたしましょうか？'
     return response
   }
   

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Get documents from file-based store
+    // 元のgetDocumentsを利用
     const result = await getDocuments(query, tags, limit, offset)
 
     // Transform documents to include user info for compatibility
